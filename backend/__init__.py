@@ -18,7 +18,13 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db)
     bcrypt.init_app(app)
-    cors.init_app(app, origins="*", supports_credentials=True)
+    # --- Configuração de CORS (Atualizada para Produção) ---
+    origins = [
+        "http://localhost:5173",  # Para você continuar testando localmente
+        "https://gestao-obras-frontend-c8lq2eiht-matheus-leocadios-projects.vercel.app" # <-- SUA URL DO VERCEL
+    ]
+    cors.init_app(app, origins=origins, supports_credentials=True)
+    # ----------------------------------------------------
     jwt.init_app(app) # <-- NOVO: Inicializa o JWT
 
     # Garante que as pastas de uploads existem
