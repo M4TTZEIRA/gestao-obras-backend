@@ -5,8 +5,14 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 
 auth_bp = Blueprint('auth', __name__)
 
-@auth_bp.route('/login', methods=['POST'])
+# --- ROTA DE LOGIN (CORRIGIDA) ---
+@auth_bp.route('/login', methods=['POST', 'OPTIONS']) # <-- ADICIONADO 'OPTIONS'
 def login():
+    # --- NOVO: Lida com a requisição de 'preflight' do CORS ---
+    if request.method == 'OPTIONS':
+        return jsonify({'message': 'Preflight OK'}), 200
+    # ----------------------------------------------------
+
     data = request.get_json()
     if not data or not data.get('username') or not data.get('password'):
         return jsonify({"error": "Usuário e senha são obrigatórios"}), 400
@@ -21,7 +27,7 @@ def login():
 
     try:
         access_token = create_access_token(identity=str(user.id))
-        user_data = user.to_dict() # Isso já inclui 'must_change_password'
+        user_data = user.to_dict()
     except Exception as e:
         print(f"Erro ao serializar usuário ou criar token (auth.py): {e}")
         return jsonify({"error": "Erro interno ao processar dados do usuário"}), 500
@@ -31,7 +37,7 @@ def login():
         "user": user_data
     }), 200
 
-# --- Rota de Atualizar Credenciais (Admin/Perfil) (Sem alterações) ---
+# --- Rota de Atualizar Credenciais (Sem alterações) ---
 @auth_bp.route('/update-credentials', methods=['PUT', 'OPTIONS'])
 @jwt_required()
 def update_credentials():
@@ -64,45 +70,28 @@ def update_credentials():
         print(f"Erro ao atualizar credenciais para user {user.id}: {e}")
         return jsonify({"error": "Erro interno ao atualizar credenciais."}), 500
 
-# --- #################################### ---
-# --- NOVA ROTA (MUDANÇA DE SENHA OBRIGATÓRIA) ---
-# --- #################################### ---
+# --- Rota de Primeira Mudança de Senha (Sem alterações) ---
 @auth_bp.route('/first-password-change', methods=['PUT', 'OPTIONS'])
-@jwt_required() # Requer o token (temporário) do login
+@jwt_required()
 def first_password_change():
-    """
-    Usado apenas para a primeira mudança de senha obrigatória.
-    Verifica a senha antiga (temporária) e define a nova.
-    """
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
-        
     current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
     data = request.get_json()
-
     if not data or not data.get('current_password') or not data.get('new_password'):
         return jsonify({"error": "Senha atual e nova senha são obrigatórias."}), 400
-
-    # 1. Verificar a Senha Atual (temporária)
     current_password = data.get('current_password')
     if not user.check_password(current_password):
         return jsonify({"error": "A senha atual (temporária) está incorreta."}), 403
-
-    # 2. Validar e definir a nova senha
     new_password = data.get('new_password')
     if len(new_password) < 6:
          return jsonify({"error": "A nova senha deve ter pelo menos 6 caracteres."}), 400
-         
     try:
         user.set_password(new_password)
-        user.must_change_password = False # <-- A MUDANÇA MAIS IMPORTANTE
-        
+        user.must_change_password = False
         db.session.commit()
-        
-        # Envia de volta os dados do usuário atualizados
-        return jsonify(user.to_dict()), 200 
-        
+        return jsonify(user.to_dict()), 200
     except Exception as e:
         db.session.rollback()
         print(f"Erro ao forçar mudança de senha para user {user.id}: {e}")
