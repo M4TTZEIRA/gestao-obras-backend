@@ -6,9 +6,8 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 auth_bp = Blueprint('auth', __name__)
 
 # --- ROTA DE LOGIN (CORRIGIDA) ---
-@auth_bp.route('/login', methods=['POST', 'OPTIONS']) # <-- ADICIONADO 'OPTIONS'
+@auth_bp.route('/login', methods=['POST', 'OPTIONS'])
 def login():
-    # --- NOVO: Lida com a requisição de 'preflight' do CORS ---
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
     # ----------------------------------------------------
