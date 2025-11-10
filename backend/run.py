@@ -30,6 +30,4 @@ def make_shell_context():
 if __name__ == '__main__':
     app.run()
 
-# ... (todo o código do run.py) ...
-
-# FORÇAR ATUALIZAÇÃO DO DEPLOY
+# Forçar novo deploy para o Render
