@@ -79,10 +79,10 @@ def create_user():
         print(f"Erro ao criar usuário (users.py): {e}")
         return jsonify({"error": "Erro interno ao salvar o usuário."}), 500
 
-# --- Rota GET /api/users (Listar Usuários) (Sem alterações) ---
+# --- Rota GET /api/users (Listar Usuários) ---
 @users_bp.route('/', methods=['GET'])
-@admin_required()
-def get_users():
+@gestor_ou_admin_required() ### <-- AGORA GESTOR TAMBÉM PODE VER
+def get_users(**kwargs): # <-- Adiciona **kwargs
     try:
         users = User.query.all()
         return jsonify({"users": [user.to_dict() for user in users]}), 200
