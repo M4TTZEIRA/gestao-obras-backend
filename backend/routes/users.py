@@ -1,32 +1,68 @@
 from flask import Blueprint, request, jsonify, current_app
-from ..models import User, Role, AuditLog # <-- 1. IMPORTA O AUDITLOG
+from ..models import User, Role, AuditLog # <-- Importei o AuditLog
 from ..extensions import db, bcrypt
 import os
 from werkzeug.utils import secure_filename
 from datetime import datetime
+# --- IMPORTS ATUALIZADOS ---
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
-from functools import wraps
-from sqlalchemy.exc import IntegrityError 
+from functools import wraps 
+from sqlalchemy.exc import IntegrityError # <-- Importei o IntegrityError
+# ---------------------------
 
-# --- Decorator de Permissão (Sem alterações) ---
-def admin_required():
+# --- NOVO: Decorator de Permissão (Gestor ou Admin) ---
+def gestor_ou_admin_required():
     def wrapper(fn):
         @wraps(fn)
         def decorator(*args, **kwargs):
+            # Ignora o token check para requisições OPTIONS
             if request.method == 'OPTIONS':
                 return fn(*args, **kwargs)
             try:
                 verify_jwt_in_request()
             except Exception as e:
                  return jsonify({"error": f"Token inválido ou ausente: {str(e)}"}), 401
+                 
             current_user_id = get_jwt_identity()
             user = User.query.get(current_user_id)
+            
+            if not user:
+                 return jsonify({"error": "Usuário do token não encontrado."}), 404
+            
+            role = user.role.name if user.role else None
+            
+            if role == 'Administrador' or role == 'Gestor':
+                kwargs['current_user'] = user 
+                return fn(*args, **kwargs) 
+            else:
+                return jsonify({"error": "Acesso negado: Requer permissão de Gestor ou Administrador."}), 403
+        return decorator
+    return wrapper
+# ------------------------------------
+
+# --- Decorator de Admin (Sem alterações) ---
+def admin_required():
+    def wrapper(fn):
+        @wraps(fn)
+        def decorator(*args, **kwargs):
+            if request.method == 'OPTIONS':
+                return fn(*args, **kwargs)
+            
+            try:
+                verify_jwt_in_request()
+            except Exception as e:
+                 return jsonify({"error": f"Token inválido ou ausente: {str(e)}"}), 401
+
+            current_user_id = get_jwt_identity()
+            user = User.query.get(current_user_id)
+            
             if user and user.role and user.role.name == 'Administrador':
                 return fn(*args, **kwargs)
             else:
                 return jsonify({"error": "Acesso negado: Requer permissão de Administrador."}), 403
         return decorator
     return wrapper
+# ------------------------------------
 
 users_bp = Blueprint('users', __name__)
 
@@ -79,10 +115,11 @@ def create_user():
         print(f"Erro ao criar usuário (users.py): {e}")
         return jsonify({"error": "Erro interno ao salvar o usuário."}), 500
 
-# --- Rota GET /api/users (Listar Usuários) ---
+# --- Rota GET /api/users (Listar Usuários) (ATUALIZADA) ---
 @users_bp.route('/', methods=['GET'])
-@gestor_ou_admin_required() ### <-- AGORA GESTOR TAMBÉM PODE VER
-def get_users(**kwargs): # <-- Adiciona **kwargs
+@gestor_ou_admin_required() # <-- DECORATOR CORRIGIDO
+def get_users(**kwargs): # <-- ADICIONADO **kwargs
+    """Lista todos os usuários."""
     try:
         users = User.query.all()
         return jsonify({"users": [user.to_dict() for user in users]}), 200
@@ -94,6 +131,7 @@ def get_users(**kwargs): # <-- Adiciona **kwargs
 @users_bp.route('/roles/', methods=['GET'])
 @jwt_required()
 def get_roles():
+    """Busca todos os cargos (roles) disponíveis."""
     try:
         roles = Role.query.order_by(Role.name).all()
         return jsonify([role.to_dict() for role in roles]), 200
@@ -151,40 +189,27 @@ def update_user(user_id):
         print(f"Erro ao atualizar usuário {user_id} (users.py PUT): {e}")
         return jsonify({"error": "Erro interno ao atualizar usuário."}), 500
 
-
-# --- Rota DELETE /api/users/<id> (Deletar Usuário) (ATUALIZADA) ---
+# --- Rota DELETE /api/users/<id> (Deletar Usuário) (Sem alterações) ---
 @users_bp.route('/<int:user_id>', methods=['DELETE'])
 @admin_required() 
 def delete_user(user_id):
-    """Deleta um usuário e seus logs de auditoria associados."""
     current_user_id = get_jwt_identity()
     if str(current_user_id) == str(user_id):
         return jsonify({"error": "Você não pode deletar a si mesmo."}), 403
-        
     user = User.query.get_or_404(user_id)
-    
-    # --- BLOCO TRY/EXCEPT ATUALIZADO ---
     try:
-        # --- 2. NOVA ETAPA: Deletar os logs de auditoria primeiro ---
-        # Isso remove a restrição de "chave estrangeira" (IntegrityError)
         AuditLog.query.filter_by(user_id=user_id).delete()
-        # --------------------------------------------------------
-        
-        # Agora podemos deletar o usuário com segurança
         db.session.delete(user)
         db.session.commit()
         return '', 204
-    
-    except IntegrityError as e: # Captura de segurança (caso ainda esteja vinculado a algo)
+    except IntegrityError as e:
         db.session.rollback()
         print(f"Erro de integridade ao deletar usuário {user_id}: {e}")
-        return jsonify({"error": "Não é possível deletar este usuário. Ele ainda está vinculado a outros registros."}), 409 # 409 Conflict
-    
-    except Exception as e: # Captura qualquer outro erro
+        return jsonify({"error": "Não é possível deletar este usuário. Ele ainda está vinculado a outros registros."}), 409
+    except Exception as e:
         db.session.rollback()
         print(f"Erro ao deletar usuário {user_id} (users.py DELETE): {e}")
         return jsonify({"error": "Erro interno ao deletar o usuário."}), 500
-    # --- FIM DA ATUALIZAÇÃO ---
 
 # --- ROTA: PUT /api/users/<id>/photo (Upload Foto de Perfil) (Sem alterações) ---
 @users_bp.route('/<int:user_id>/photo', methods=['PUT'])
