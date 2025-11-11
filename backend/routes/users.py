@@ -6,6 +6,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from functools import wraps
+from sqlalchemy.exc import IntegrityError # <-- NOVO IMPORT
 
 # --- DECORATOR (CORRIGIDO) ---
 def admin_required():
@@ -29,7 +30,7 @@ def admin_required():
             else:
                 return jsonify({"error": "Acesso negado: Requer permissão de Administrador."}), 403
         return decorator
-    return wrapper # <-- ESTA LINHA FOI CORRIGIDA (Indentação)
+    return wrapper
 # ------------------------------------
 
 users_bp = Blueprint('users', __name__)
@@ -66,7 +67,7 @@ def create_user():
         return jsonify({"error": f"Role '{role_name}' inválida ou não encontrada."}), 400
 
     try:
-        # --- CORREÇÃO: Converte strings vazias em None (NULL) ---
+        # Converte strings vazias em None (NULL)
         cpf_data = data.get('cpf')
         rg_data = data.get('rg')
         telefone_data = data.get('telefone')
@@ -79,9 +80,8 @@ def create_user():
             cpf=cpf_data if cpf_data else None,
             rg=rg_data if rg_data else None,
             telefone=telefone_data if telefone_data else None,
-            must_change_password=True # <-- Linha adicionada
+            must_change_password=True # Força a troca de senha no primeiro login
         )
-        # ----------------------------------------------------
         
         new_user.set_password(password)
         db.session.add(new_user)
@@ -90,7 +90,7 @@ def create_user():
 
     except Exception as e:
         db.session.rollback()
-        print(f"Erro ao criar usuário (users.py): {e}") # O erro real aparecerá aqui no terminal
+        print(f"Erro ao criar usuário (users.py): {e}")
         return jsonify({"error": "Erro interno ao salvar o usuário."}), 500
 
 # --- Rota GET /api/users (Listar Usuários) (Sem alterações) ---
@@ -125,14 +125,13 @@ def get_user(user_id):
     current_user_id = get_jwt_identity()
     user = User.query.get(current_user_id)
     
-    # Acesso de Admin OU o próprio usuário
     if user.role.name != 'Administrador' and str(current_user_id) != str(user_id):
         return jsonify({"error": "Acesso negado."}), 403
     
     user_to_get = User.query.get_or_404(user_id)
     return jsonify(user_to_get.to_dict(include_details=True)), 200
 
-# --- Rota PUT /api/users/<id> (Atualizar Usuário) (CORRIGIDA) ---
+# --- Rota PUT /api/users/<id> (Atualizar Usuário) (Sem alterações) ---
 @users_bp.route('/<int:user_id>', methods=['PUT'])
 @jwt_required()
 def update_user(user_id):
@@ -140,14 +139,12 @@ def update_user(user_id):
     current_user_id = get_jwt_identity()
     user_making_request = User.query.get(current_user_id)
     
-    # Acesso de Admin OU o próprio usuário
     if user_making_request.role.name != 'Administrador' and str(current_user_id) != str(user_id):
         return jsonify({"error": "Acesso negado: Você só pode editar seu próprio perfil."}), 403
 
     user_to_update = User.query.get_or_404(user_id)
     data = request.get_json()
     
-    # Lógica de atualização
     if 'nome' in data:
         user_to_update.nome = data['nome']
     if 'email' in data:
@@ -155,22 +152,17 @@ def update_user(user_id):
              return jsonify({"error": "E-mail já cadastrado"}), 409
         user_to_update.email = data['email']
     
-    # --- CORREÇÃO: Converte strings vazias em None (NULL) ---
     if 'telefone' in data:
         user_to_update.telefone = data['telefone'] if data['telefone'] else None
-    if 'cpf' in data:
-        # Verifica se o CPF já não está em uso por OUTRO usuário
+    if 'cpf' in data: 
         if data['cpf'] and data['cpf'] != user_to_update.cpf and User.query.filter_by(cpf=data['cpf']).first():
              return jsonify({"error": "CPF já cadastrado"}), 409
         user_to_update.cpf = data['cpf'] if data['cpf'] else None
-    if 'rg' in data:
-        # Verifica se o RG já não está em uso por OUTRO usuário
+    if 'rg' in data: 
         if data['rg'] and data['rg'] != user_to_update.rg and User.query.filter_by(rg=data['rg']).first():
              return jsonify({"error": "RG já cadastrado"}), 409
         user_to_update.rg = data['rg'] if data['rg'] else None
-    # ----------------------------------------------------
         
-    # Somente Admin pode mudar a Role
     if 'role' in data and user_making_request.role.name == 'Administrador':
         role = Role.query.filter_by(name=data['role']).first()
         if not role:
@@ -186,9 +178,9 @@ def update_user(user_id):
         return jsonify({"error": "Erro interno ao atualizar usuário."}), 500
 
 
-# --- Rota DELETE /api/users/<id> (Deletar Usuário) (Sem alterações) ---
+# --- Rota DELETE /api/users/<id> (Deletar Usuário) (ATUALIZADA) ---
 @users_bp.route('/<int:user_id>', methods=['DELETE'])
-@admin_required()
+@admin_required() 
 def delete_user(user_id):
     """Deleta um usuário."""
     current_user_id = get_jwt_identity()
@@ -196,14 +188,24 @@ def delete_user(user_id):
         return jsonify({"error": "Você não pode deletar a si mesmo."}), 403
         
     user = User.query.get_or_404(user_id)
+    
+    # --- BLOCO TRY/EXCEPT ATUALIZADO ---
     try:
         db.session.delete(user)
         db.session.commit()
         return '', 204
-    except Exception as e:
+    
+    except IntegrityError as e: # <-- Captura o erro do banco de dados
+        db.session.rollback()
+        print(f"Erro de integridade ao deletar usuário {user_id}: {e}")
+        # Retorna uma mensagem de erro clara para o frontend
+        return jsonify({"error": "Não é possível deletar este usuário. Ele está vinculado a obras, transações ou outras atividades no sistema."}), 409 # 409 Conflict
+    
+    except Exception as e: # <-- Captura qualquer outro erro
         db.session.rollback()
         print(f"Erro ao deletar usuário {user_id} (users.py DELETE): {e}")
-        return jsonify({"error": "Erro interno ao deletar usuário."}), 500
+        return jsonify({"error": "Erro interno ao deletar o usuário."}), 500
+    # --- FIM DA ATUALIZAÇÃO ---
 
 # --- ROTA: PUT /api/users/<id>/photo (Upload Foto de Perfil) (Sem alterações) ---
 @users_bp.route('/<int:user_id>/photo', methods=['PUT'])
