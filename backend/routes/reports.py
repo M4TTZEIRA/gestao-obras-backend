@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-# --- IMPORTS CORRIGIDOS (Adicionado Documentos) ---
+# --- Imports Corrigidos (sem duplicatas) ---
 from ..models import Obras, FinanceiroTransacoes, User, InventarioItens, ChecklistItem, Documentos
 from ..extensions import db
 from sqlalchemy.sql import func
@@ -81,6 +81,7 @@ reports_bp = Blueprint('reports', __name__)
 @reports_bp.route('/reports/kpis/', methods=['GET', 'OPTIONS'])
 @gestor_ou_admin_required()
 def get_global_kpis(**kwargs):
+    # ... (código existente sem alterações) ...
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
     try:
@@ -108,15 +109,23 @@ def get_global_kpis(**kwargs):
         print(f"Erro ao calcular KPIs globais: {e}")
         return jsonify({"error": "Erro interno ao calcular os relatórios."}), 500
 
-# --- Rota de Fluxo de Caixa Global (Sem alterações) ---
+# --- Rota de Fluxo de Caixa Global (CORRIGIDA) ---
 @reports_bp.route('/reports/cashflow/', methods=['GET', 'OPTIONS'])
 @gestor_ou_admin_required()
 def get_cashflow_report(**kwargs):
+    """
+    Calcula o fluxo de caixa (entradas vs saídas)
+    agrupado por mês para todas as obras.
+    """
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
+
     try:
+        # --- ESTA É A LINHA CORRIGIDA ---
+        # Trocámos func.strftime('%Y-%m', ...) por func.to_char(..., 'YYYY-MM')
+        # que é a função equivalente no PostgreSQL.
         cashflow_data = db.session.query(
-            func.strftime('%Y-%m', FinanceiroTransacoes.criado_em).label('mes'),
+            func.to_char(FinanceiroTransacoes.criado_em, 'YYYY-MM').label('mes'),
             FinanceiroTransacoes.tipo,
             func.sum(FinanceiroTransacoes.valor).label('total')
         ).filter(
@@ -126,8 +135,13 @@ def get_cashflow_report(**kwargs):
         ).order_by(
             'mes'
         ).all()
+        # --- FIM DA CORREÇÃO ---
+        
+        # Formata os dados para o frontend
         formatted_data = format_cashflow_data(cashflow_data)
+        
         return jsonify(formatted_data), 200
+
     except Exception as e:
         print(f"Erro ao calcular fluxo de caixa: {e}")
         return jsonify({"error": "Erro interno ao calcular o fluxo de caixa."}), 500
@@ -137,6 +151,7 @@ def get_cashflow_report(**kwargs):
 @reports_bp.route('/reports/global-inventory/', methods=['GET', 'OPTIONS'])
 @gestor_ou_admin_required()
 def get_global_inventory(**kwargs):
+    # ... (código existente sem alterações) ...
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
     try:
@@ -163,6 +178,7 @@ def get_global_inventory(**kwargs):
 @reports_bp.route('/reports/global-checklist/', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_global_checklist(**kwargs):
+    # ... (código existente sem alterações) ...
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
     try:
@@ -206,39 +222,28 @@ def get_global_checklist(**kwargs):
         print(f"Erro ao calcular checklist global: {e}")
         return jsonify({"error": "Erro interno ao calcular o checklist."}), 500
 
-# --- #################################### ---
-# ---     NOVA ROTA (DOCUMENTOS GLOBAIS)   ---
-# --- #################################### ---
+# --- Rota de Documentos Globais (Sem alterações) ---
 @reports_bp.route('/reports/global-documents/', methods=['GET', 'OPTIONS'])
 @gestor_ou_admin_required()
 def get_global_documents(**kwargs):
-    """
-    Busca todos os documentos de todas as obras,
-    juntando o nome da obra.
-    """
+    # ... (código existente sem alterações) ...
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
-
     try:
-        # Query para buscar documentos E o nome da obra associada
         documents_data = db.session.query(
             Documentos,
             Obras.nome.label('obra_nome')
         ).join(
             Obras, Documentos.obra_id == Obras.id
         ).order_by(
-            Obras.nome.asc(), Documentos.uploaded_at.desc() # Ordena por obra, depois por data
+            Obras.nome.asc(), Documentos.uploaded_at.desc()
         ).all()
-        
-        # Formata os dados para o frontend
         results = []
         for doc, obra_nome in documents_data:
             doc_dict = doc.to_dict()
-            doc_dict['obra_nome'] = obra_nome # Adiciona o nome da obra ao dicionário
+            doc_dict['obra_nome'] = obra_nome
             results.append(doc_dict)
-            
         return jsonify(results), 200
-
     except Exception as e:
         print(f"Erro ao calcular documentos globais: {e}")
         return jsonify({"error": "Erro interno ao calcular os documentos."}), 500
