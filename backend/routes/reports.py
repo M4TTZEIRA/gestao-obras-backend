@@ -1,5 +1,5 @@
-from flask import Blueprint, jsonify, request
-# --- Imports Corrigidos (sem duplicatas) ---
+from flask import Blueprint, jsonify, request # <-- ADICIONADO 'request'
+# --- Imports Corrigidos ---
 from ..models import Obras, FinanceiroTransacoes, User, InventarioItens, ChecklistItem, Documentos
 from ..extensions import db
 from sqlalchemy.sql import func
@@ -109,35 +109,52 @@ def get_global_kpis(**kwargs):
         print(f"Erro ao calcular KPIs globais: {e}")
         return jsonify({"error": "Erro interno ao calcular os relatórios."}), 500
 
-# --- Rota de Fluxo de Caixa Global (CORRIGIDA) ---
+# --- Rota de Fluxo de Caixa Global (ATUALIZADA) ---
 @reports_bp.route('/reports/cashflow/', methods=['GET', 'OPTIONS'])
 @gestor_ou_admin_required()
 def get_cashflow_report(**kwargs):
     """
     Calcula o fluxo de caixa (entradas vs saídas)
-    agrupado por mês para todas as obras.
+    agrupado por mês OU semana para todas as obras.
     """
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
 
     try:
-        # --- ESTA É A LINHA CORRIGIDA ---
-        # Trocámos func.strftime('%Y-%m', ...) por func.to_char(..., 'YYYY-MM')
-        # que é a função equivalente no PostgreSQL.
+        # --- 1. LÊ O PARÂMETRO DA URL ---
+        periodo = request.args.get('periodo', 'mensal') # Padrão é 'mensal'
+        
+        # --- 2. ESCOLHE A FUNÇÃO DE AGRUPAMENTO (PostgreSQL vs SQLite) ---
+        dialect = db.engine.dialect.name
+        
+        if dialect == 'postgresql':
+            if periodo == 'semanal':
+                # Agrupa por Ano e Número da Semana (ex: '2025-45')
+                grouping_format = 'YYYY-WW' 
+            else: # 'mensal'
+                grouping_format = 'YYYY-MM'
+            grouping_expression = func.to_char(FinanceiroTransacoes.criado_em, grouping_format)
+        else: # SQLite (para o seu ambiente local)
+            if periodo == 'semanal':
+                grouping_format = '%Y-%W' # %W = Semana do ano (00-53)
+            else: # 'mensal'
+                grouping_format = '%Y-%m'
+            grouping_expression = func.strftime(grouping_format, FinanceiroTransacoes.criado_em)
+        # ----------------------------------------------------
+
         cashflow_data = db.session.query(
-            func.to_char(FinanceiroTransacoes.criado_em, 'YYYY-MM').label('mes'),
+            grouping_expression.label('periodo_label'), # Usa a expressão dinâmica
             FinanceiroTransacoes.tipo,
             func.sum(FinanceiroTransacoes.valor).label('total')
         ).filter(
             FinanceiroTransacoes.status == 'ativo'
         ).group_by(
-            'mes', FinanceiroTransacoes.tipo
+            'periodo_label', FinanceiroTransacoes.tipo # Agrupa pela expressão
         ).order_by(
-            'mes'
+            'periodo_label' # Ordena pela expressão
         ).all()
-        # --- FIM DA CORREÇÃO ---
         
-        # Formata os dados para o frontend
+        # Formata os dados para o frontend (a função helper não muda)
         formatted_data = format_cashflow_data(cashflow_data)
         
         return jsonify(formatted_data), 200
