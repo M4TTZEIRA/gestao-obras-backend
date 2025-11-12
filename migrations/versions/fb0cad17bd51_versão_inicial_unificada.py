@@ -1,8 +1,8 @@
-"""Criação inicial com models 100% corretos
+"""Versão inicial unificada
 
-Revision ID: 8779f820e92f
+Revision ID: fb0cad17bd51
 Revises: 
-Create Date: 2025-11-04 17:30:03.456068
+Create Date: 2025-11-12 17:05:24.185769
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '8779f820e92f'
+revision = 'fb0cad17bd51'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -68,6 +68,7 @@ def upgrade():
     sa.Column('criado_por', sa.Integer(), nullable=True),
     sa.Column('criado_em', sa.DateTime(), nullable=True),
     sa.Column('atualizado_em', sa.DateTime(), nullable=True),
+    sa.Column('is_stock_default', sa.Boolean(), nullable=False),
     sa.ForeignKeyConstraint(['criado_por'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
