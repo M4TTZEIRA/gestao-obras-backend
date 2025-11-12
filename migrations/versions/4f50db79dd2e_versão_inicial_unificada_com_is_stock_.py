@@ -1,8 +1,8 @@
-"""Versão inicial unificada
+"""Versão inicial unificada com is_stock_default
 
-Revision ID: fb0cad17bd51
+Revision ID: 4f50db79dd2e
 Revises: 
-Create Date: 2025-11-12 17:05:24.185769
+Create Date: 2025-11-12 17:27:01.249126
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'fb0cad17bd51'
+revision = '4f50db79dd2e'
 down_revision = None
 branch_labels = None
 depends_on = None
