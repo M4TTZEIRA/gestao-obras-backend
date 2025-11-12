@@ -73,10 +73,7 @@ class Obras(db.Model):
     criado_em = db.Column(db.DateTime, default=datetime.now)
     atualizado_em = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
-    # --- NOVO CAMPO ---
-    # Este campo marcará a nossa obra "Estoque Central"
     is_stock_default = db.Column(db.Boolean, nullable=False, default=False)
-    # ------------------
 
     funcionarios = db.relationship('ObraFuncionarios', back_populates='obra', cascade="all, delete-orphan")
     transacoes = db.relationship('FinanceiroTransacoes', back_populates='obra', cascade="all, delete-orphan")
@@ -97,7 +94,7 @@ class Obras(db.Model):
             'criado_por': self.criado_por,
             'criado_em': self.criado_em.isoformat() if self.criado_em else None,
             'atualizado_em': self.atualizado_em.isoformat() if self.atualizado_em else None,
-            'is_stock_default': self.is_stock_default # <-- ADICIONADO AO DICIONÁRIO
+            'is_stock_default': self.is_stock_default
         }
 
 class ObraFuncionarios(db.Model):
@@ -164,22 +161,20 @@ class ObraFuncionarios(db.Model):
 
 
 class FinanceiroTransacoes(db.Model):
+    # ... (código existente da classe FinanceiroTransacoes, sem alterações) ...
     __tablename__ = 'financeiro_transacoes'
     id = db.Column(db.Integer, primary_key=True)
     obra_id = db.Column(db.Integer, db.ForeignKey('obras.id'), nullable=False)
-    tipo = db.Column(db.String(20), nullable=False) # 'entrada', 'saida'
+    tipo = db.Column(db.String(20), nullable=False)
     valor = db.Column(db.Numeric(10, 2), nullable=False)
     descricao = db.Column(db.Text, nullable=True)
     criado_por = db.Column(db.Integer, db.ForeignKey('users.id'))
     criado_em = db.Column(db.DateTime, default=datetime.now)
     atualizado_em = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
-    
-    # Campos de Cancelamento (da nossa funcionalidade anterior)
-    status = db.Column(db.String(50), nullable=False, default='ativo') # 'ativo' ou 'cancelado'
+    status = db.Column(db.String(50), nullable=False, default='ativo')
     cancelado_por = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     cancelado_em = db.Column(db.DateTime, nullable=True)
     motivo_cancelamento = db.Column(db.Text, nullable=True)
-    
     obra = db.relationship('Obras', back_populates='transacoes')
     criador = db.relationship('User', foreign_keys=[criado_por])
     cancelador = db.relationship('User', foreign_keys=[cancelado_por])
@@ -306,14 +301,14 @@ class ChecklistItem(db.Model):
         }
 
 class ChecklistAnexo(db.Model):
-    # ... (código existente da classe ChecklistAnexo, sem alterações) ...
     __tablename__ = 'checklist_anexos'
     id = db.Column(db.Integer, primary_key=True)
     checklist_item_id = db.Column(db.Integer, db.ForeignKey('checklist_items.id'), nullable=False)
     filename = db.Column(db.String(255), nullable=False) 
     uploaded_at = db.Column(db.DateTime, default=datetime.now)
     
-    checklist_item = db.relationship('ChecklistAnexo', back_populates='anexos')
+    # --- ESTA É A LINHA CORRIGIDA ---
+    checklist_item = db.relationship('ChecklistItem', back_populates='anexos')
 
     def to_dict(self):
         return {
