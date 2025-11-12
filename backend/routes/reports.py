@@ -1,14 +1,12 @@
-from flask import Blueprint, jsonify, request # <-- ADICIONADO 'request'
-# --- Imports Corrigidos ---
+from flask import Blueprint, jsonify, request
 from ..models import Obras, FinanceiroTransacoes, User, InventarioItens, ChecklistItem, Documentos
 from ..extensions import db
 from sqlalchemy.sql import func
 from datetime import datetime, date
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from functools import wraps
-# ----------------------------------------
 
-# --- Decorator de Permissão (Sem alterações) ---
+# --- Decorator (Sem alterações) ---
 def gestor_ou_admin_required():
     def wrapper(fn):
         @wraps(fn)
@@ -19,15 +17,11 @@ def gestor_ou_admin_required():
                 verify_jwt_in_request()
             except Exception as e:
                  return jsonify({"error": f"Token inválido ou ausente: {str(e)}"}), 401
-                 
             current_user_id = get_jwt_identity()
             user = User.query.get(current_user_id)
-            
             if not user:
                  return jsonify({"error": "Usuário do token não encontrado."}), 404
-            
             role = user.role.name if user.role else None
-            
             if role == 'Administrador' or role == 'Gestor':
                 kwargs['current_user'] = user 
                 return fn(*args, **kwargs) 
@@ -36,7 +30,7 @@ def gestor_ou_admin_required():
         return decorator
     return wrapper
 
-# --- FUNÇÃO HELPER (FLUXO DE CAIXA) (Sem alterações) ---
+# --- Helper (Sem alterações) ---
 def format_cashflow_data(query_results):
     data_map = {}
     for mes, tipo, total in query_results:
@@ -56,28 +50,15 @@ def format_cashflow_data(query_results):
     return {
         'labels': sorted_labels,
         'datasets': [
-            {
-                'label': 'Entradas (R$)',
-                'data': entradas_data,
-                'backgroundColor': 'rgba(34, 197, 94, 0.6)',
-                'borderColor': 'rgba(34, 197, 94, 1)',
-                'borderWidth': 1
-            },
-            {
-                'label': 'Saídas (R$)',
-                'data': saidas_data,
-                'backgroundColor': 'rgba(239, 68, 68, 0.6)',
-                'borderColor': 'rgba(239, 68, 68, 1)',
-                'borderWidth': 1
-            }
+            {'label': 'Entradas (R$)', 'data': entradas_data, 'backgroundColor': 'rgba(34, 197, 94, 0.6)', 'borderColor': 'rgba(34, 197, 94, 1)', 'borderWidth': 1},
+            {'label': 'Saídas (R$)', 'data': saidas_data, 'backgroundColor': 'rgba(239, 68, 68, 0.6)', 'borderColor': 'rgba(239, 68, 68, 1)', 'borderWidth': 1}
         ]
     }
 
-# --- Cria o Blueprint ---
+# --- Blueprint ---
 reports_bp = Blueprint('reports', __name__)
 
-
-# --- Rota de KPIs Globais (Sem alterações) ---
+# --- Rota KPIs (Sem alterações) ---
 @reports_bp.route('/reports/kpis/', methods=['GET', 'OPTIONS'])
 @gestor_ou_admin_required()
 def get_global_kpis(**kwargs):
@@ -85,21 +66,23 @@ def get_global_kpis(**kwargs):
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
     try:
-        total_obras = db.session.query(func.count(Obras.id)).scalar() or 0
-        obras_ativas = db.session.query(func.count(Obras.id)).filter(Obras.status == 'Em Andamento').scalar() or 0
-        total_orcamento_atual = db.session.query(func.sum(Obras.orcamento_atual)).scalar() or 0.0
-        total_custos = db.session.query(func.sum(FinanceiroTransacoes.valor)).filter(
+        total_obras = db.session.query(func.count(Obras.id)).filter(Obras.is_stock_default == False).scalar() or 0 # Ignora o estoque
+        obras_ativas = db.session.query(func.count(Obras.id)).filter(Obras.status == 'Em Andamento', Obras.is_stock_default == False).scalar() or 0
+        total_orcamento_atual = db.session.query(func.sum(Obras.orcamento_atual)).filter(Obras.is_stock_default == False).scalar() or 0.0
+        total_custos = db.session.query(func.sum(FinanceiroTransacoes.valor)).join(Obras).filter(
             FinanceiroTransacoes.tipo == 'saida',
-            FinanceiroTransacoes.status == 'ativo'
+            FinanceiroTransacoes.status == 'ativo',
+            Obras.is_stock_default == False
         ).scalar() or 0.0
-        total_receitas = db.session.query(func.sum(FinanceiroTransacoes.valor)).filter(
+        total_receitas = db.session.query(func.sum(FinanceiroTransacoes.valor)).join(Obras).filter(
             FinanceiroTransacoes.tipo == 'entrada',
-            FinanceiroTransacoes.status == 'ativo'
+            FinanceiroTransacoes.status == 'ativo',
+            Obras.is_stock_default == False
         ).scalar() or 0.0
         kpis = {
             'total_obras': total_obras,
             'obras_ativas': obras_ativas,
-            'obras_concluidas': db.session.query(func.count(Obras.id)).filter(Obras.status == 'Concluída').scalar() or 0,
+            'obras_concluidas': db.session.query(func.count(Obras.id)).filter(Obras.status == 'Concluída', Obras.is_stock_default == False).scalar() or 0,
             'total_orcamento_atual': str(total_orcamento_atual),
             'total_custos': str(total_custos),
             'total_receitas': str(total_receitas),
@@ -109,89 +92,83 @@ def get_global_kpis(**kwargs):
         print(f"Erro ao calcular KPIs globais: {e}")
         return jsonify({"error": "Erro interno ao calcular os relatórios."}), 500
 
-# --- Rota de Fluxo de Caixa Global (ATUALIZADA) ---
+# --- Rota Cashflow (ATUALIZADA) ---
 @reports_bp.route('/reports/cashflow/', methods=['GET', 'OPTIONS'])
 @gestor_ou_admin_required()
 def get_cashflow_report(**kwargs):
-    """
-    Calcula o fluxo de caixa (entradas vs saídas)
-    agrupado por mês OU semana para todas as obras.
-    """
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
-
     try:
-        # --- 1. LÊ O PARÂMETRO DA URL ---
-        periodo = request.args.get('periodo', 'mensal') # Padrão é 'mensal'
-        
-        # --- 2. ESCOLHE A FUNÇÃO DE AGRUPAMENTO (PostgreSQL vs SQLite) ---
+        periodo = request.args.get('periodo', 'mensal')
         dialect = db.engine.dialect.name
-        
         if dialect == 'postgresql':
-            if periodo == 'semanal':
-                # Agrupa por Ano e Número da Semana (ex: '2025-45')
-                grouping_format = 'YYYY-WW' 
-            else: # 'mensal'
-                grouping_format = 'YYYY-MM'
+            grouping_format = 'YYYY-WW' if periodo == 'semanal' else 'YYYY-MM'
             grouping_expression = func.to_char(FinanceiroTransacoes.criado_em, grouping_format)
-        else: # SQLite (para o seu ambiente local)
-            if periodo == 'semanal':
-                grouping_format = '%Y-%W' # %W = Semana do ano (00-53)
-            else: # 'mensal'
-                grouping_format = '%Y-%m'
+        else:
+            grouping_format = '%Y-%W' if periodo == 'semanal' else '%Y-%m'
             grouping_expression = func.strftime(grouping_format, FinanceiroTransacoes.criado_em)
-        # ----------------------------------------------------
-
+        
         cashflow_data = db.session.query(
-            grouping_expression.label('periodo_label'), # Usa a expressão dinâmica
+            grouping_expression.label('periodo_label'),
             FinanceiroTransacoes.tipo,
             func.sum(FinanceiroTransacoes.valor).label('total')
-        ).filter(
-            FinanceiroTransacoes.status == 'ativo'
+        ).join(Obras).filter( # <-- JOIN com Obras
+            FinanceiroTransacoes.status == 'ativo',
+            Obras.is_stock_default == False # <-- Ignora o estoque
         ).group_by(
-            'periodo_label', FinanceiroTransacoes.tipo # Agrupa pela expressão
+            'periodo_label', FinanceiroTransacoes.tipo
         ).order_by(
-            'periodo_label' # Ordena pela expressão
+            'periodo_label'
         ).all()
-        
-        # Formata os dados para o frontend (a função helper não muda)
         formatted_data = format_cashflow_data(cashflow_data)
-        
         return jsonify(formatted_data), 200
-
     except Exception as e:
         print(f"Erro ao calcular fluxo de caixa: {e}")
         return jsonify({"error": "Erro interno ao calcular o fluxo de caixa."}), 500
 
 
-# --- Rota de Inventário Global (Sem alterações) ---
+# --- Rota Inventário Global (ATUALIZADA) ---
 @reports_bp.route('/reports/global-inventory/', methods=['GET', 'OPTIONS'])
 @gestor_ou_admin_required()
 def get_global_inventory(**kwargs):
-    # ... (código existente sem alterações) ...
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
     try:
-        inventory_data = db.session.query(
+        # Busca TODOS os itens e suas obras
+        all_items_query = db.session.query(
             InventarioItens,
-            Obras.nome.label('obra_nome')
+            Obras.nome.label('obra_nome'),
+            Obras.is_stock_default # <-- Pega a nova flag
         ).join(
             Obras, InventarioItens.obra_id == Obras.id
         ).order_by(
             Obras.nome.asc(), InventarioItens.nome.asc()
         ).all()
-        results = []
-        for item, obra_nome in inventory_data:
+        
+        # Separa as listas
+        stock_items = []
+        obra_items = []
+        
+        for item, obra_nome, is_stock in all_items_query:
             item_dict = item.to_dict()
-            item_dict['obra_nome'] = obra_nome
-            results.append(item_dict)
-        return jsonify(results), 200
+            item_dict['obra_nome'] = obra_nome 
+            
+            if is_stock:
+                stock_items.append(item_dict)
+            else:
+                obra_items.append(item_dict)
+            
+        return jsonify({
+            'stock_items': stock_items,
+            'obra_items': obra_items
+        }), 200
+
     except Exception as e:
         print(f"Erro ao calcular inventário global: {e}")
         return jsonify({"error": "Erro interno ao calcular o inventário."}), 500
 
 
-# --- Rota de Checklist Global (Sem alterações) ---
+# --- Rota Checklist Global (Sem alterações) ---
 @reports_bp.route('/reports/global-checklist/', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_global_checklist(**kwargs):
@@ -204,23 +181,21 @@ def get_global_checklist(**kwargs):
         my_tasks_query = db.session.query(
             ChecklistItem,
             Obras.nome.label('obra_nome')
-        ).join(
-            Obras, ChecklistItem.obra_id == Obras.id
-        ).filter(
+        ).join(Obras).filter(
             ChecklistItem.responsavel_user_id == current_user_id,
-            ChecklistItem.status == 'pendente'
+            ChecklistItem.status == 'pendente',
+            Obras.is_stock_default == False # Ignora o estoque
         ).order_by(
             ChecklistItem.prazo.asc()
         ).all()
         overdue_tasks_query = db.session.query(
             ChecklistItem,
             Obras.nome.label('obra_nome')
-        ).join(
-            Obras, ChecklistItem.obra_id == Obras.id
-        ).filter(
+        ).join(Obras).filter(
             ChecklistItem.status == 'pendente',
             ChecklistItem.prazo != None,
-            ChecklistItem.prazo < today
+            ChecklistItem.prazo < today,
+            Obras.is_stock_default == False # Ignora o estoque
         ).order_by(
             ChecklistItem.prazo.asc()
         ).all()
@@ -239,19 +214,18 @@ def get_global_checklist(**kwargs):
         print(f"Erro ao calcular checklist global: {e}")
         return jsonify({"error": "Erro interno ao calcular o checklist."}), 500
 
-# --- Rota de Documentos Globais (Sem alterações) ---
+# --- Rota Documentos Globais (ATUALIZADA) ---
 @reports_bp.route('/reports/global-documents/', methods=['GET', 'OPTIONS'])
 @gestor_ou_admin_required()
 def get_global_documents(**kwargs):
-    # ... (código existente sem alterações) ...
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
     try:
         documents_data = db.session.query(
             Documentos,
             Obras.nome.label('obra_nome')
-        ).join(
-            Obras, Documentos.obra_id == Obras.id
+        ).join(Obras).filter(
+            Obras.is_stock_default == False # <-- Ignora o estoque
         ).order_by(
             Obras.nome.asc(), Documentos.uploaded_at.desc()
         ).all()
