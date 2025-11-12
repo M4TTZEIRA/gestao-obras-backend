@@ -16,7 +16,7 @@ class User(db.Model):
     telefone = db.Column(db.String(20), nullable=True)
     foto_path = db.Column(db.String(255), nullable=True) 
     role_id = db.Column(db.Integer, db.ForeignKey('roles.id'), nullable=False, default=3) 
-    must_change_password = db.Column(db.Boolean, default=True) # <-- MUDADO PARA True
+    must_change_password = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -28,9 +28,9 @@ class User(db.Model):
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password_hash, password)
 
-    def to_dict(self):
+    def to_dict(self, include_details=False): # Adicionando include_details
         foto_url = f'/api/uploads/profile_pics/{self.foto_path}' if self.foto_path else None
-        return {
+        data = {
             'id': self.id,
             'username': self.username,
             'nome': self.nome,
@@ -40,6 +40,10 @@ class User(db.Model):
             'foto_path': foto_url, 
             'must_change_password': self.must_change_password
         }
+        if include_details:
+             data['cpf'] = self.cpf
+             data['rg'] = self.rg
+        return data
 
 class Role(db.Model):
     # ... (código existente da classe Role, sem alterações) ...
@@ -48,7 +52,6 @@ class Role(db.Model):
     name = db.Column(db.String(80), unique=True, nullable=False)
     permissions = db.Column(db.JSON, nullable=True)
 
-    # --- NOVO MÉTODO ---
     def to_dict(self):
         return {
             'id': self.id,
@@ -80,6 +83,7 @@ class Obras(db.Model):
     inventario = db.relationship('InventarioItens', back_populates='obra', cascade="all, delete-orphan")
     checklist_itens = db.relationship('ChecklistItem', back_populates='obra', cascade="all, delete-orphan")
     documentos = db.relationship('Documentos', back_populates='obra', cascade="all, delete-orphan")
+
 
     def to_dict(self):
         return {
@@ -169,18 +173,15 @@ class FinanceiroTransacoes(db.Model):
     criado_por = db.Column(db.Integer, db.ForeignKey('users.id'))
     criado_em = db.Column(db.DateTime, default=datetime.now)
     atualizado_em = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
-
-    # --- NOVOS CAMPOS PARA CANCELAMENTO ---
+    
+    # Campos de Cancelamento (da nossa funcionalidade anterior)
     status = db.Column(db.String(50), nullable=False, default='ativo') # 'ativo' ou 'cancelado'
     cancelado_por = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     cancelado_em = db.Column(db.DateTime, nullable=True)
     motivo_cancelamento = db.Column(db.Text, nullable=True)
-    # --- FIM DOS NOVOS CAMPOS ---
-
+    
     obra = db.relationship('Obras', back_populates='transacoes')
     criador = db.relationship('User', foreign_keys=[criado_por])
-    
-    # --- NOVA RELAÇÃO ---
     cancelador = db.relationship('User', foreign_keys=[cancelado_por])
 
     def to_dict(self):
@@ -193,13 +194,12 @@ class FinanceiroTransacoes(db.Model):
             'criado_por_nome': self.criador.nome if self.criador else "Sistema",
             'criado_em': self.criado_em.isoformat() if self.criado_em else None,
             'atualizado_em': self.atualizado_em.isoformat() if self.atualizado_em else None,
-            
-            # --- NOVOS CAMPOS NO DICIONÁRIO ---
             'status': self.status,
             'cancelado_por_nome': self.cancelador.nome if self.cancelador else None,
             'cancelado_em': self.cancelado_em.isoformat() if self.cancelado_em else None,
             'motivo_cancelamento': self.motivo_cancelamento
         }
+
 
 class InventarioItens(db.Model):
     # ... (código existente da classe InventarioItens, sem alterações) ...
@@ -239,27 +239,26 @@ class PontoRegistros(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.now)
 
 class Documentos(db.Model):
+    # ... (código existente da classe Documentos, sem alterações) ...
     __tablename__ = 'documentos'
     id = db.Column(db.Integer, primary_key=True)
     obra_id = db.Column(db.Integer, db.ForeignKey('obras.id'), nullable=True) 
-    filename = db.Column(db.String(255), nullable=False) # Nome original do ficheiro
-    filepath = db.Column(db.String(255), nullable=False) # Nome seguro guardado no disco
-    tipo = db.Column(db.String(50)) # Planta, Contrato, Nota Fiscal
-    visibilidade = db.Column(db.String(50), default='todos') # todos, gestores, admin
+    filename = db.Column(db.String(255), nullable=False) 
+    filepath = db.Column(db.String(255), nullable=False) 
+    tipo = db.Column(db.String(50)) 
+    visibilidade = db.Column(db.String(50), default='todos') 
     uploaded_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     uploaded_at = db.Column(db.DateTime, default=datetime.now)
 
-    # --- NOVAS RELAÇÕES ---
     obra = db.relationship('Obras', back_populates='documentos')
     uploader = db.relationship('User', foreign_keys=[uploaded_by])
 
-    # --- MÉTODO CORRIGIDO ---
     def to_dict(self):
         return {
             'id': self.id,
             'obra_id': self.obra_id,
-            'filename': self.filename, # O nome original para exibição
-            'filepath_url': f'/api/uploads/documentos_obra/{self.filepath}', # A URL CORRETA para download
+            'filename': self.filename, 
+            'filepath_url': f'/api/uploads/documentos_obra/{self.filepath}', 
             'tipo': self.tipo,
             'visibilidade': self.visibilidade,
             'uploaded_by_nome': self.uploader.nome if self.uploader else "Sistema",
@@ -314,7 +313,7 @@ class ChecklistAnexo(db.Model):
     filename = db.Column(db.String(255), nullable=False) 
     uploaded_at = db.Column(db.DateTime, default=datetime.now)
     
-    checklist_item = db.relationship('ChecklistItem', back_populates='anexos')
+    checklist_item = db.relationship('ChecklistAnexo', back_populates='anexos')
 
     def to_dict(self):
         return {
