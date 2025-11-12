@@ -1,10 +1,7 @@
 from .extensions import db, bcrypt
 from datetime import datetime, date # Importa date
 
-# ... (imports existentes) ...
-
 class User(db.Model):
-    # ... (código existente da classe User, sem alterações) ...
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -21,6 +18,14 @@ class User(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
     role = db.relationship('Role')
+    
+    # Relações de "quem criou" (para Auditoria e Histórico)
+    obras_criadas = db.relationship('Obras', foreign_keys='Obras.criado_por', back_populates='criador_user')
+    transacoes_criadas = db.relationship('FinanceiroTransacoes', foreign_keys='FinanceiroTransacoes.criado_por', back_populates='criador')
+    transacoes_canceladas = db.relationship('FinanceiroTransacoes', foreign_keys='FinanceiroTransacoes.cancelado_por', back_populates='cancelador')
+    documentos_enviados = db.relationship('Documentos', foreign_keys='Documentos.uploaded_by', back_populates='uploader')
+    tarefas_atribuidas = db.relationship('ChecklistItem', foreign_keys='ChecklistItem.responsavel_user_id', back_populates='responsavel')
+    logs_de_auditoria = db.relationship('AuditLog', foreign_keys='AuditLog.user_id', back_populates='user')
 
     def set_password(self, password):
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
@@ -28,7 +33,7 @@ class User(db.Model):
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password_hash, password)
 
-    def to_dict(self, include_details=False): # Adicionando include_details
+    def to_dict(self, include_details=False):
         foto_url = f'/api/uploads/profile_pics/{self.foto_path}' if self.foto_path else None
         data = {
             'id': self.id,
@@ -46,7 +51,6 @@ class User(db.Model):
         return data
 
 class Role(db.Model):
-    # ... (código existente da classe Role, sem alterações) ...
     __tablename__ = 'roles'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), unique=True, nullable=False)
@@ -73,8 +77,11 @@ class Obras(db.Model):
     criado_em = db.Column(db.DateTime, default=datetime.now)
     atualizado_em = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
+    # --- ESTE É O CAMPO QUE FALTAVA ---
     is_stock_default = db.Column(db.Boolean, nullable=False, default=False)
+    # ---------------------------------
 
+    criador_user = db.relationship('User', foreign_keys=[criado_por], back_populates='obras_criadas')
     funcionarios = db.relationship('ObraFuncionarios', back_populates='obra', cascade="all, delete-orphan")
     transacoes = db.relationship('FinanceiroTransacoes', back_populates='obra', cascade="all, delete-orphan")
     inventario = db.relationship('InventarioItens', back_populates='obra', cascade="all, delete-orphan")
@@ -94,11 +101,10 @@ class Obras(db.Model):
             'criado_por': self.criado_por,
             'criado_em': self.criado_em.isoformat() if self.criado_em else None,
             'atualizado_em': self.atualizado_em.isoformat() if self.atualizado_em else None,
-            'is_stock_default': self.is_stock_default
+            'is_stock_default': self.is_stock_default # <-- ADICIONADO AO DICIONÁRIO
         }
 
 class ObraFuncionarios(db.Model):
-    # ... (código existente da classe ObraFuncionarios, sem alterações) ...
     __tablename__ = 'obra_funcionarios'
     id = db.Column(db.Integer, primary_key=True)
     obra_id = db.Column(db.Integer, db.ForeignKey('obras.id'), nullable=False)
@@ -161,11 +167,10 @@ class ObraFuncionarios(db.Model):
 
 
 class FinanceiroTransacoes(db.Model):
-    # ... (código existente da classe FinanceiroTransacoes, sem alterações) ...
     __tablename__ = 'financeiro_transacoes'
     id = db.Column(db.Integer, primary_key=True)
     obra_id = db.Column(db.Integer, db.ForeignKey('obras.id'), nullable=False)
-    tipo = db.Column(db.String(20), nullable=False)
+    tipo = db.Column(db.String(20), nullable=False) # 'entrada', 'saida'
     valor = db.Column(db.Numeric(10, 2), nullable=False)
     descricao = db.Column(db.Text, nullable=True)
     criado_por = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -176,8 +181,8 @@ class FinanceiroTransacoes(db.Model):
     cancelado_em = db.Column(db.DateTime, nullable=True)
     motivo_cancelamento = db.Column(db.Text, nullable=True)
     obra = db.relationship('Obras', back_populates='transacoes')
-    criador = db.relationship('User', foreign_keys=[criado_por])
-    cancelador = db.relationship('User', foreign_keys=[cancelado_por])
+    criador = db.relationship('User', foreign_keys=[criado_por], back_populates='transacoes_criadas')
+    cancelador = db.relationship('User', foreign_keys=[cancelado_por], back_populates='transacoes_canceladas')
 
     def to_dict(self):
         return {
@@ -197,7 +202,6 @@ class FinanceiroTransacoes(db.Model):
 
 
 class InventarioItens(db.Model):
-    # ... (código existente da classe InventarioItens, sem alterações) ...
     __tablename__ = 'inventario_itens'
     id = db.Column(db.Integer, primary_key=True)
     obra_id = db.Column(db.Integer, db.ForeignKey('obras.id'), nullable=False)
@@ -225,7 +229,6 @@ class InventarioItens(db.Model):
         }
 
 class PontoRegistros(db.Model):
-    # ... (código existente da classe PontoRegistros, sem alterações) ...
     __tablename__ = 'ponto_registros'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -234,7 +237,6 @@ class PontoRegistros(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.now)
 
 class Documentos(db.Model):
-    # ... (código existente da classe Documentos, sem alterações) ...
     __tablename__ = 'documentos'
     id = db.Column(db.Integer, primary_key=True)
     obra_id = db.Column(db.Integer, db.ForeignKey('obras.id'), nullable=True) 
@@ -246,7 +248,7 @@ class Documentos(db.Model):
     uploaded_at = db.Column(db.DateTime, default=datetime.now)
 
     obra = db.relationship('Obras', back_populates='documentos')
-    uploader = db.relationship('User', foreign_keys=[uploaded_by])
+    uploader = db.relationship('User', foreign_keys=[uploaded_by], back_populates='documentos_enviados')
 
     def to_dict(self):
         return {
@@ -261,7 +263,6 @@ class Documentos(db.Model):
         }
 
 class ChecklistItem(db.Model):
-    # ... (código existente da classe ChecklistItem, sem alterações) ...
     __tablename__ = 'checklist_items'
     id = db.Column(db.Integer, primary_key=True)
     obra_id = db.Column(db.Integer, db.ForeignKey('obras.id'), nullable=False)
@@ -273,7 +274,7 @@ class ChecklistItem(db.Model):
     data_conclusao = db.Column(db.DateTime, nullable=True)
     prazo = db.Column(db.Date, nullable=True) 
 
-    responsavel = db.relationship('User')
+    responsavel = db.relationship('User', foreign_keys=[responsavel_user_id], back_populates='tarefas_atribuidas')
     obra = db.relationship('Obras', back_populates='checklist_itens')
     anexos = db.relationship('ChecklistAnexo', back_populates='checklist_item', cascade="all, delete-orphan")
 
@@ -320,7 +321,6 @@ class ChecklistAnexo(db.Model):
 
 
 class AuditLog(db.Model):
-    # ... (código existente da classe AuditLog, sem alterações) ...
     __tablename__ = 'audit_logs'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
@@ -329,4 +329,5 @@ class AuditLog(db.Model):
     resource_id = db.Column(db.Integer, nullable=True)
     details = db.Column(db.JSON, nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.now)
-    user = db.relationship('User')
+    
+    user = db.relationship('User', foreign_keys=[user_id], back_populates='logs_de_auditoria')
