@@ -58,7 +58,6 @@ class Role(db.Model):
 
 
 class Obras(db.Model):
-    # ... (código existente da classe Obras) ...
     __tablename__ = 'obras'
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(200), nullable=False)
@@ -70,18 +69,19 @@ class Obras(db.Model):
     criado_por = db.Column(db.Integer, db.ForeignKey('users.id'))
     criado_em = db.Column(db.DateTime, default=datetime.now)
     atualizado_em = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    # --- NOVO CAMPO ---
+    # Este campo marcará a nossa obra "Estoque Central"
+    is_stock_default = db.Column(db.Boolean, nullable=False, default=False)
+    # ------------------
 
     funcionarios = db.relationship('ObraFuncionarios', back_populates='obra', cascade="all, delete-orphan")
     transacoes = db.relationship('FinanceiroTransacoes', back_populates='obra', cascade="all, delete-orphan")
     inventario = db.relationship('InventarioItens', back_populates='obra', cascade="all, delete-orphan")
     checklist_itens = db.relationship('ChecklistItem', back_populates='obra', cascade="all, delete-orphan")
-    
-    # --- NOVA RELAÇÃO ---
     documentos = db.relationship('Documentos', back_populates='obra', cascade="all, delete-orphan")
 
-
     def to_dict(self):
-        # ... (código existente do to_dict, sem alterações) ...
         return {
             'id': self.id,
             'nome': self.nome,
@@ -93,6 +93,7 @@ class Obras(db.Model):
             'criado_por': self.criado_por,
             'criado_em': self.criado_em.isoformat() if self.criado_em else None,
             'atualizado_em': self.atualizado_em.isoformat() if self.atualizado_em else None,
+            'is_stock_default': self.is_stock_default # <-- ADICIONADO AO DICIONÁRIO
         }
 
 class ObraFuncionarios(db.Model):
