@@ -331,3 +331,64 @@ class AuditLog(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.now)
     
     user = db.relationship('User', foreign_keys=[user_id], back_populates='logs_de_auditoria')
+
+# --- NOVOS MODELOS PARA O MARKETPLACE ---
+
+class Imovel(db.Model):
+    __tablename__ = 'imoveis'
+    id = db.Column(db.Integer, primary_key=True)
+    titulo = db.Column(db.String(200), nullable=False)
+    endereco = db.Column(db.String(255), nullable=False)
+    bairro = db.Column(db.String(100), nullable=True)
+    numero = db.Column(db.String(20), nullable=True)
+    cep = db.Column(db.String(20), nullable=True)
+    metragem = db.Column(db.String(50), nullable=True) # Ex: "120m²"
+    proprietario = db.Column(db.String(150), nullable=True)
+    observacoes = db.Column(db.Text, nullable=True)
+    
+    # Status: 'À venda', 'Em negociação', 'Vendida'
+    status = db.Column(db.String(50), default='À venda')
+    
+    # Foto de capa (Pré-visualização)
+    foto_capa = db.Column(db.String(255), nullable=True)
+    
+    criado_por = db.Column(db.Integer, db.ForeignKey('users.id'))
+    criado_em = db.Column(db.DateTime, default=datetime.now)
+    atualizado_em = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    # Relacionamento com a galeria de fotos
+    fotos = db.relationship('ImovelFotos', back_populates='imovel', cascade="all, delete-orphan")
+    criador = db.relationship('User')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'titulo': self.titulo,
+            'endereco': self.endereco,
+            'bairro': self.bairro,
+            'numero': self.numero,
+            'cep': self.cep,
+            'endereco_completo': f"{self.endereco}, {self.numero} - {self.bairro}",
+            'metragem': self.metragem,
+            'proprietario': self.proprietario,
+            'observacoes': self.observacoes,
+            'status': self.status,
+            'foto_capa_url': f'/api/uploads/marketplace/{self.foto_capa}' if self.foto_capa else None,
+            'criado_por_nome': self.criador.nome if self.criador else "Sistema",
+            'fotos': [f.to_dict() for f in self.fotos]
+        }
+
+class ImovelFotos(db.Model):
+    __tablename__ = 'imovel_fotos'
+    id = db.Column(db.Integer, primary_key=True)
+    imovel_id = db.Column(db.Integer, db.ForeignKey('imoveis.id'), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=datetime.now)
+
+    imovel = db.relationship('Imovel', back_populates='fotos')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'url': f'/api/uploads/marketplace/{self.filename}'
+        }
