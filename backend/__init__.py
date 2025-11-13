@@ -51,6 +51,9 @@ def create_app(config_class=Config):
     from .routes.auth import auth_bp
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
 
+    from .routes.marketplace import marketplace_bp
+    app.register_blueprint(marketplace_bp, url_prefix='/api')
+
     from .routes.users import users_bp
     app.register_blueprint(users_bp, url_prefix='/api/users')
 
@@ -82,6 +85,14 @@ def create_app(config_class=Config):
 
     # --- ROTAS PARA SERVIR FICHEIROS ---
     
+    @app.route('/api/uploads/marketplace/<path:filename>')
+    def serve_marketplace_pic(filename):
+        upload_dir = os.path.join(app.instance_path, 'uploads/marketplace')
+        try:
+            return send_from_directory(upload_dir, filename, as_attachment=False)
+        except FileNotFoundError:
+            return jsonify({"error": "Ficheiro não encontrado"}), 404
+
     @app.route('/api/uploads/profile_pics/<path:filename>')
     def serve_profile_pic(filename):
         upload_dir = os.path.join(app.instance_path, 'uploads/profile_pics')
