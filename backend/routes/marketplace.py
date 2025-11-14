@@ -37,7 +37,7 @@ def gestor_ou_admin_required():
 
 marketplace_bp = Blueprint('marketplace', __name__)
 
-# --- LISTAR IMÓVEIS (Público para quem tem login) ---
+# --- LISTAR IMÓVEIS (Sem alterações) ---
 @marketplace_bp.route('/marketplace/', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_imoveis():
@@ -45,7 +45,7 @@ def get_imoveis():
     imoveis = Imovel.query.order_by(Imovel.criado_em.desc()).all()
     return jsonify([i.to_dict() for i in imoveis]), 200
 
-# --- OBTER DETALHES DE UM IMÓVEL ---
+# --- OBTER DETALHES DE UM IMÓVEL (Sem alterações) ---
 @marketplace_bp.route('/marketplace/<int:id>/', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_imovel(id):
@@ -53,16 +53,13 @@ def get_imovel(id):
     imovel = Imovel.query.get_or_404(id)
     return jsonify(imovel.to_dict()), 200
 
-# --- CRIAR IMÓVEL (Admin/Gestor) ---
+# --- CRIAR IMÓVEL (Sem alterações) ---
 @marketplace_bp.route('/marketplace/', methods=['POST', 'OPTIONS'])
 @gestor_ou_admin_required()
 def create_imovel():
     if request.method == 'OPTIONS': return jsonify({'msg': 'OK'}), 200
-    
-    # Recebe dados via Form-Data (para aceitar imagem junto)
     data = request.form
     file = request.files.get('foto_capa')
-    
     try:
         novo_imovel = Imovel(
             titulo=data.get('titulo'),
@@ -76,89 +73,102 @@ def create_imovel():
             status=data.get('status', 'À venda'),
             criado_por=get_jwt_identity()
         )
-
-        # Processa a Foto de Capa
         if file and allowed_file(file.filename):
             filename = secure_filename(f"capa_{uuid.uuid4()}_{file.filename}")
             upload_path = os.path.join(current_app.instance_path, MARKETPLACE_UPLOAD_FOLDER)
             os.makedirs(upload_path, exist_ok=True)
             file.save(os.path.join(upload_path, filename))
             novo_imovel.foto_capa = filename
-
         db.session.add(novo_imovel)
         db.session.commit()
         return jsonify(novo_imovel.to_dict()), 201
-
     except Exception as e:
         db.session.rollback()
         print(f"Erro ao criar imóvel: {e}")
         return jsonify({"error": "Erro ao salvar imóvel"}), 500
 
-# --- ADICIONAR FOTO NA GALERIA ---
+# --- ADICIONAR FOTO NA GALERIA (Sem alterações) ---
 @marketplace_bp.route('/marketplace/<int:id>/fotos/', methods=['POST', 'OPTIONS'])
 @gestor_ou_admin_required()
 def add_gallery_photo(id):
     if request.method == 'OPTIONS': return jsonify({'msg': 'OK'}), 200
-    
     imovel = Imovel.query.get_or_404(id)
-    file = request.files.get('foto')
-
+    file = request.files.get('foto') # Aceita um único upload 'foto'
     if file and allowed_file(file.filename):
         try:
             filename = secure_filename(f"galeria_{id}_{uuid.uuid4()}_{file.filename}")
             upload_path = os.path.join(current_app.instance_path, MARKETPLACE_UPLOAD_FOLDER)
             os.makedirs(upload_path, exist_ok=True)
             file.save(os.path.join(upload_path, filename))
-
             nova_foto = ImovelFotos(imovel_id=id, filename=filename)
             db.session.add(nova_foto)
             db.session.commit()
             return jsonify(nova_foto.to_dict()), 201
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-    
     return jsonify({"error": "Arquivo inválido"}), 400
 
-# --- ATUALIZAR IMÓVEL ---
+# --- ATUALIZAR IMÓVEL (Sem alterações) ---
 @marketplace_bp.route('/marketplace/<int:id>/', methods=['PUT', 'OPTIONS'])
 @gestor_ou_admin_required()
 def update_imovel(id):
     if request.method == 'OPTIONS': return jsonify({'msg': 'OK'}), 200
     imovel = Imovel.query.get_or_404(id)
     data = request.json
-    
-    if 'titulo' in data: imovel.titulo = data.get('titulo')
-    if 'endereco' in data: imovel.endereco = data.get('endereco')
-    if 'bairro' in data: imovel.bairro = data.get('bairro')
-    if 'numero' in data: imovel.numero = data.get('numero')
-    if 'cep' in data: imovel.cep = data.get('cep')
-    if 'metragem' in data: imovel.metragem = data.get('metragem')
-    if 'proprietario' in data: imovel.proprietario = data.get('proprietario')
-    if 'observacoes' in data: imovel.observacoes = data.get('observacoes')
-    if 'status' in data: imovel.status = data.get('status')
-    
+    imovel.titulo = data.get('titulo', imovel.titulo)
+    imovel.endereco = data.get('endereco', imovel.endereco)
+    imovel.bairro = data.get('bairro', imovel.bairro)
+    imovel.numero = data.get('numero', imovel.numero)
+    imovel.cep = data.get('cep', imovel.cep)
+    imovel.metragem = data.get('metragem', imovel.metragem)
+    imovel.proprietario = data.get('proprietario', imovel.proprietario)
+    imovel.observacoes = data.get('observacoes', imovel.observacoes)
+    imovel.status = data.get('status', imovel.status)
     db.session.commit()
     return jsonify(imovel.to_dict()), 200
 
-# --- REMOVER IMÓVEL ---
+# --- REMOVER IMÓVEL (Sem alterações) ---
 @marketplace_bp.route('/marketplace/<int:id>/', methods=['DELETE', 'OPTIONS'])
 @gestor_ou_admin_required()
 def delete_imovel(id):
     if request.method == 'OPTIONS': return jsonify({'msg': 'OK'}), 200
     imovel = Imovel.query.get_or_404(id)
-    
-    # Remove arquivo de capa
     if imovel.foto_capa:
         try:
             os.remove(os.path.join(current_app.instance_path, MARKETPLACE_UPLOAD_FOLDER, imovel.foto_capa))
         except: pass
-        
-    # As fotos da galeria são removidas do banco pelo cascade, mas precisamos limpar os arquivos
     for foto in imovel.fotos:
         try:
             os.remove(os.path.join(current_app.instance_path, MARKETPLACE_UPLOAD_FOLDER, foto.filename))
         except: pass
-
     db.session.delete(imovel)
     db.session.commit()
     return '', 204
+
+# --- #################################### ---
+# ---    NOVA ROTA (REMOVER FOTO)          ---
+# --- #################################### ---
+@marketplace_bp.route('/marketplace/fotos/<int:foto_id>/', methods=['DELETE', 'OPTIONS'])
+@gestor_ou_admin_required()
+def delete_gallery_photo(foto_id):
+    if request.method == 'OPTIONS': return jsonify({'msg': 'OK'}), 200
+    
+    foto = ImovelFotos.query.get_or_404(foto_id)
+    
+    try:
+        # 1. Remove o arquivo do disco
+        if foto.filename:
+            try:
+                os.remove(os.path.join(current_app.instance_path, MARKETPLACE_UPLOAD_FOLDER, foto.filename))
+            except Exception as e:
+                print(f"Aviso: Não foi possível remover o arquivo físico da foto {foto_id}: {e}")
+                
+        # 2. Remove o registro do banco de dados
+        db.session.delete(foto)
+        db.session.commit()
+        return '', 204 # Sucesso
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Erro ao deletar foto {foto_id}: {e}")
+        return jsonify({"error": "Erro interno ao deletar a foto."}), 500
