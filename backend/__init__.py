@@ -18,16 +18,17 @@ def create_app(config_class=Config):
     migrate.init_app(app, db)
     bcrypt.init_app(app)
 
-    # --- CONFIGURAÇÃO DE CORS ATUALIZADA ---
+    # --- Configuração de CORS (Atualizada para Produção) ---
     origins = [
-        "http://localhost:5173", # Para o seu teste local
-        "https://gestao-obras-frontend.vercel.app", # A URL principal
-        "https://gestao-obras-frontend-c8lq2eiht-matheus-leocadios-projects.vercel.app", # URL antiga
-        "https://gestao-obras-frontend-q9uv1hm7z-matheus-leocadios-projects.vercel.app" # <-- A SUA NOVA URL
+    "http://localhost:5173",  # Para o seu teste local
+
+    # --- Links do Vercel (do seu print 'image_fd1ae6.png') ---
+    "https://gestao-obras-frontend.vercel.app", # O PRINCIPAL
+    "https://gestao-obras-frontend-git-main-matheus-leocadios-projects.vercel.app",
+    "https://gestao-obras-frontend-a56ixi81u-matheus-leocadios-projects.vercel.app"
     ]
     cors.init_app(app, origins=origins, supports_credentials=True)
-    # ------------------------------------
-
+# ----------------------------------------------------
     jwt.init_app(app) 
 
     # Cria pastas de uploads
