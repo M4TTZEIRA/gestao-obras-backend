@@ -1,16 +1,16 @@
 from flask import Blueprint, request, jsonify, current_app
-from ..models import User, Role, AuditLog # <-- Importei o AuditLog
+from ..models import User, Role, AuditLog # <-- 1. IMPORTA O AUDITLOG
 from ..extensions import db, bcrypt
 import os
 from werkzeug.utils import secure_filename
 from datetime import datetime
-# --- IMPORTS ATUALIZADOS ---
+# --- 2. IMPORTS ATUALIZADOS ---
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from functools import wraps 
-from sqlalchemy.exc import IntegrityError # <-- Importei o IntegrityError
+from sqlalchemy.exc import IntegrityError # <-- IMPORTA O INTEGRITYERROR
 # ---------------------------
 
-# --- NOVO: Decorator de Permissão (Gestor ou Admin) ---
+# --- 3. ADICIONADO Decorator de Permissão (Gestor ou Admin) ---
 def gestor_ou_admin_required():
     def wrapper(fn):
         @wraps(fn)
@@ -115,7 +115,7 @@ def create_user():
         print(f"Erro ao criar usuário (users.py): {e}")
         return jsonify({"error": "Erro interno ao salvar o usuário."}), 500
 
-# --- Rota GET /api/users (Listar Usuários) (ATUALIZADA) ---
+# --- 4. Rota GET /api/users (Listar Usuários) (ATUALIZADA) ---
 @users_bp.route('/', methods=['GET'])
 @gestor_ou_admin_required() # <-- DECORATOR CORRIGIDO
 def get_users(**kwargs): # <-- ADICIONADO **kwargs
