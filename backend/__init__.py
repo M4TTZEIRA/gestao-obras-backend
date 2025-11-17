@@ -1,58 +1,50 @@
 from flask import Flask, send_from_directory, jsonify
 import os
 from .config import Config
-# --- ATUALIZADO: Importa 'jwt' ---
 from .extensions import db, migrate, bcrypt, cors, jwt 
-from datetime import timedelta # <-- NOVO para JWT
+from datetime import timedelta 
 
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
-    
-    # --- NOVO: Configuração de tempo de expiração do JWT ---
-    # A Secret Key (JWT_SECRET_KEY) já está no seu config.py
+
+    main_secret_key = app.config.get("SECRET_KEY", "uma-chave-secreta-muito-dificil-de-adivinhar")
+    app.config["SECRET_KEY"] = main_secret_key
+    app.config["JWT_SECRET_KEY"] = main_secret_key
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
-    # ----------------------------------------------------
 
     # Inicializa as extensões
     db.init_app(app)
     migrate.init_app(app, db)
     bcrypt.init_app(app)
 
+    # --- CONFIGURAÇÃO DE CORS ATUALIZADA ---
     origins = [
-    "http://localhost:5173",
-    "https://gestao-obras-frontend-c8lq2eiht-matheus-leocadios-projects.vercel.app",
-    "https://gestao-obras-frontend.vercel.app" 
+        "http://localhost:5173", # Para o seu teste local
+        "https://gestao-obras-frontend.vercel.app", # A URL principal
+        "https://gestao-obras-frontend-c8lq2eiht-matheus-leocadios-projects.vercel.app", # URL antiga
+        "https://gestao-obras-frontend-q9uv1hm7z-matheus-leocadios-projects.vercel.app" # <-- A SUA NOVA URL
     ]
     cors.init_app(app, origins=origins, supports_credentials=True)
+    # ------------------------------------
 
-    jwt.init_app(app) # <-- NOVO: Inicializa o JWT
+    jwt.init_app(app) 
 
-    # Garante que as pastas de uploads existem
+    # Cria pastas de uploads
     try:
-        profile_pics_path = os.path.join(app.instance_path, 'uploads/profile_pics')
-        os.makedirs(profile_pics_path, exist_ok=True)
-        
-        checklist_pics_path = os.path.join(app.instance_path, 'uploads/checklist_pics')
-        os.makedirs(checklist_pics_path, exist_ok=True)
-        
-        # --- Pasta para Documentos da Obra ---
-        documentos_obra_path = os.path.join(app.instance_path, 'uploads/documentos_obra')
-        os.makedirs(documentos_obra_path, exist_ok=True)
-        # -------------------------------------
+        os.makedirs(os.path.join(app.instance_path, 'uploads/profile_pics'), exist_ok=True)
+        os.makedirs(os.path.join(app.instance_path, 'uploads/checklist_pics'), exist_ok=True)
+        os.makedirs(os.path.join(app.instance_path, 'uploads/documentos_obra'), exist_ok=True)
+        os.makedirs(os.path.join(app.instance_path, 'uploads/marketplace'), exist_ok=True)
     except OSError as e:
         print(f"Erro ao criar diretório de uploads: {e}")
 
-    # Importa os modelos DEPOIS do db.init_app
     with app.app_context():
         from . import models
 
-    # -- Register Blueprints --
+    # -- Registra os Blueprints (Rotas) --
     from .routes.auth import auth_bp
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
-
-    from .routes.marketplace import marketplace_bp
-    app.register_blueprint(marketplace_bp, url_prefix='/api')
 
     from .routes.users import users_bp
     app.register_blueprint(users_bp, url_prefix='/api/users')
@@ -68,30 +60,21 @@ def create_app(config_class=Config):
 
     from .routes.checklist import checklist_bp
     app.register_blueprint(checklist_bp, url_prefix='/api') 
-    
+
     from .routes.documentos import documentos_bp
     app.register_blueprint(documentos_bp, url_prefix='/api')
 
-    # -------------------------------------
-
-    # --- NOVO BLUEPRINT DE RELATÓRIOS ---
     from .routes.reports import reports_bp
     app.register_blueprint(reports_bp, url_prefix='/api')
-    # ------------------------------------
+
+    from .routes.marketplace import marketplace_bp
+    app.register_blueprint(marketplace_bp, url_prefix='/api')
 
     @app.route('/')
     def index():
         return "Servidor Backend Gestão de Obras no ar!"
 
-    # --- ROTAS PARA SERVIR FICHEIROS ---
-    
-    @app.route('/api/uploads/marketplace/<path:filename>')
-    def serve_marketplace_pic(filename):
-        upload_dir = os.path.join(app.instance_path, 'uploads/marketplace')
-        try:
-            return send_from_directory(upload_dir, filename, as_attachment=False)
-        except FileNotFoundError:
-            return jsonify({"error": "Ficheiro não encontrado"}), 404
+    # --- Rotas para servir ficheiros ---
 
     @app.route('/api/uploads/profile_pics/<path:filename>')
     def serve_profile_pic(filename):
@@ -100,7 +83,7 @@ def create_app(config_class=Config):
             return send_from_directory(upload_dir, filename, as_attachment=False)
         except FileNotFoundError:
              return jsonify({"error": "Ficheiro não encontrado"}), 404
-             
+
     @app.route('/api/uploads/checklist_pics/<path:filename>')
     def serve_checklist_pic(filename):
         upload_dir = os.path.join(app.instance_path, 'uploads/checklist_pics') 
@@ -108,15 +91,21 @@ def create_app(config_class=Config):
             return send_from_directory(upload_dir, filename, as_attachment=False)
         except FileNotFoundError:
              return jsonify({"error": "Ficheiro não encontrado"}), 404
-             
-    # --- Rota específica para documentos da obra ---
+
     @app.route('/api/uploads/documentos_obra/<path:filename>')
     def serve_documento_obra(filename):
         upload_dir = os.path.join(app.instance_path, 'uploads/documentos_obra') 
         try:
-            return send_from_directory(upload_dir, filename, as_attachment=False) # Visualização
+            return send_from_directory(upload_dir, filename, as_attachment=False)
         except FileNotFoundError:
              return jsonify({"error": "Ficheiro não encontrado"}), 404
-    # -----------------------------------------------
+
+    @app.route('/api/uploads/marketplace/<path:filename>')
+    def serve_marketplace_pic(filename):
+        upload_dir = os.path.join(app.instance_path, 'uploads/marketplace')
+        try:
+            return send_from_directory(upload_dir, filename, as_attachment=False)
+        except FileNotFoundError:
+             return jsonify({"error": "Ficheiro não encontrado"}), 404
 
     return app

@@ -5,12 +5,10 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 
 auth_bp = Blueprint('auth', __name__)
 
-# --- ROTA DE LOGIN (CORRIGIDA) ---
 @auth_bp.route('/login', methods=['POST', 'OPTIONS'])
 def login():
     if request.method == 'OPTIONS':
         return jsonify({'message': 'Preflight OK'}), 200
-    # ----------------------------------------------------
 
     data = request.get_json()
     if not data or not data.get('username') or not data.get('password'):
@@ -18,7 +16,6 @@ def login():
 
     username = data.get('username')
     password = data.get('password')
-
     user = User.query.filter_by(username=username).first()
 
     if not user or not user.check_password(password):
@@ -36,7 +33,6 @@ def login():
         "user": user_data
     }), 200
 
-# --- Rota de Atualizar Credenciais (Sem alterações) ---
 @auth_bp.route('/update-credentials', methods=['PUT', 'OPTIONS'])
 @jwt_required()
 def update_credentials():
@@ -69,7 +65,6 @@ def update_credentials():
         print(f"Erro ao atualizar credenciais para user {user.id}: {e}")
         return jsonify({"error": "Erro interno ao atualizar credenciais."}), 500
 
-# --- Rota de Primeira Mudança de Senha (Sem alterações) ---
 @auth_bp.route('/first-password-change', methods=['PUT', 'OPTIONS'])
 @jwt_required()
 def first_password_change():
